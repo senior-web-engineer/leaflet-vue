@@ -1,0 +1,269 @@
+<template>
+  <div id="container">
+    <div id="select" class="my-card">
+      <div>
+        <select id="state">
+          <option value="1">Cancer1</option>
+          <option value="2">Cancer2</option>
+          <option value="3">Cancer3</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="mapContainer"></div>
+
+    <div id="info" class="my-card">
+      <div>
+        <p>
+          <strong>Description:</strong>
+          Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
+          eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad
+          minim veniam, quis nostrud exercitation ullamco laboris nisi ut
+          aliquip ex ea commodo consequat.
+        </p>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+import statesData from "./assets/geoStates.json";
+import geoFlorida from "./assets/geoFloridaCounties.json";
+import geoSC from "./assets/geoSouthCarolinaCounties.json";
+
+export default {
+  name: "Map",
+  data() {
+    return {
+      center: [37.8, -96],
+      data: [],
+      map: null,
+      tiles: null,
+      geojson: null,
+      legend: null,
+      attraction: {
+        name: "",
+        address: "",
+        category: "",
+      },
+    };
+  },
+
+  methods: {
+    setupLeafletMap() {
+      this.map = L.map("mapContainer").setView(this.center, 4);
+      this.tiles = L.tileLayer(
+        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+        {
+          maxZoom: 19,
+          attribution:
+            '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        }
+      ).addTo(this.map);
+
+      this.geojson = L.geoJson(statesData, {
+        style: this.style,
+        onEachFeature: this.onEachFeature,
+      }).addTo(this.map);
+
+      this.info = L.control();
+      this.info.onAdd = function() {
+        this._div = L.DomUtil.create("div", "info"); // create a div with a class "info"
+        this.update();
+        return this._div;
+      };
+      // method that we will use to update the control based on feature properties passed
+      this.info.update = function(props) {
+        this._div.innerHTML =
+          "<h4>US Population Density</h4>" +
+          (props
+            ? "<b>" +
+              props.name +
+              "</b><br />" +
+              props.density +
+              " people / mi<sup>2</sup>"
+            : "Hover over a state");
+      };
+      this.info.addTo(this.map);
+
+      this.legend = L.control({ position: "bottomright" });
+
+      this.legend.onAdd = function() {
+        var div = L.DomUtil.create("div", "info legend");
+        var grades = [0, 10, 20, 50, 100, 200, 500, 1000];
+        // labels = [];
+
+        // loop through our density intervals and generate a label with a colored square for each interval
+        for (var i = 0; i < grades.length; i++) {
+          div.innerHTML +=
+            '<i style="background:' +
+            getColor(grades[i] + 1) +
+            '"></i> ' +
+            grades[i] +
+            (grades[i + 1] ? "&ndash;" + grades[i + 1] + "<br>" : "+");
+        }
+
+        return div;
+      };
+      this.legend.addTo(this.map);
+
+      function getColor(d) {
+        return d > 1000
+          ? "#800026"
+          : d > 500
+          ? "#BD0026"
+          : d > 200
+          ? "#E31A1C"
+          : d > 100
+          ? "#FC4E2A"
+          : d > 50
+          ? "#FD8D3C"
+          : d > 20
+          ? "#FEB24C"
+          : d > 10
+          ? "#FED976"
+          : "#FFEDA0";
+      }
+    },
+
+    onEachFeature(feature, layer) {
+      layer.on({
+        mouseover: this.highlightFeature,
+        mouseout: this.resetHighlight,
+        click: this.zoomToFeature,
+      });
+    },
+    getColor(d) {
+      return d > 1000
+        ? "#800026"
+        : d > 500
+        ? "#BD0026"
+        : d > 200
+        ? "#E31A1C"
+        : d > 100
+        ? "#FC4E2A"
+        : d > 50
+        ? "#FD8D3C"
+        : d > 20
+        ? "#FEB24C"
+        : d > 10
+        ? "#FED976"
+        : "#FFEDA0";
+    },
+    style(feature) {
+      return {
+        fillColor: this.getColor(feature.properties.density),
+        weight: 2,
+        opacity: 1,
+        color: "white",
+        dashArray: "3",
+        fillOpacity: 0.7,
+      };
+    },
+    styleCounty(feature) {
+      return {
+        fillColor: this.getColor(feature.properties.CENSUSAREA),
+        weight: 2,
+        opacity: 1,
+        color: "white",
+        dashArray: "3",
+        fillOpacity: 0.7,
+      };
+    },
+    highlightFeature(e) {
+      var layer = e.target;
+
+      layer.setStyle({
+        weight: 5,
+        color: "#666",
+        dashArray: "",
+        fillOpacity: 0.7,
+      });
+
+      layer.bringToFront();
+
+      this.info.update(layer.feature.properties);
+    },
+    resetHighlight(e) {
+      this.geojson.resetStyle(e.target);
+      this.info.update();
+    },
+    zoomToFeature(e) {
+      this.map.fitBounds(e.target.getBounds());
+      const name = e.target.feature.properties.name;
+      this.resetMap();
+      if (name == "Florida") {
+        this.geojson = L.geoJson(geoFlorida, {
+          style: this.styleCounty,
+          onEachFeature: this.onEachFeature,
+        }).addTo(this.map);
+      } else if (name == "South Carolina") {
+        this.geojson = L.geoJson(geoSC, {
+          style: this.styleCounty,
+          onEachFeature: this.onEachFeature,
+        }).addTo(this.map);
+      } else {
+        console.log(e, "########");
+      }
+    },
+    resetMap() {
+      this.map.removeLayer(this.geojson);
+
+      this.geojson = L.geoJson(statesData, {
+        style: this.styleCounty,
+        onEachFeature: this.onEachFeature,
+      }).addTo(this.map);
+    },
+  },
+  mounted() {
+    this.setupLeafletMap();
+  },
+};
+</script>
+
+<style>
+#container {
+  display: flex;
+}
+#select {
+  width: 18vw;
+  height: 100vh;
+}
+#info {
+  width: 18vw;
+  height: 100vh;
+}
+#mapContainer {
+  width: 60vw;
+  height: 100vh;
+}
+.my-card {
+  margin: 5px;
+  padding: 10px;
+}
+.info {
+  padding: 6px 8px;
+  font: 14px/16px Arial, Helvetica, sans-serif;
+  background: white;
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+  border-radius: 5px;
+}
+.info h4 {
+  margin: 0 0 5px;
+  color: #777;
+}
+.legend {
+  line-height: 18px;
+  color: #555;
+}
+.legend i {
+  width: 18px;
+  height: 18px;
+  float: left;
+  margin-right: 8px;
+  opacity: 0.7;
+}
+</style>
